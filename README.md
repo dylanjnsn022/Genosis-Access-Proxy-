@@ -10,6 +10,10 @@ Genosis is an access proxy. It offers non-https ssl termination, 2FA login, perm
         go build bpm.go
         go build 2fa.go
 
+### Build Self Signed Cert:
+        openssl genrsa -out server.key 2048
+        openssl req -new -x509 -sha256 -key server.key -out server.crt -days 3650
+
 ### Usage:
     ./genosis <config file path>
     ./bpm
