@@ -1,5 +1,5 @@
 # Genosis-Access-Proxy
 
-###Usage
+### Usage
 basic Usage:
 ./genosis <config file>
