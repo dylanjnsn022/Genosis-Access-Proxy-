@@ -449,7 +449,19 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func redirect_http(){
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t, _ := template.ParseFiles("http_redirect.gtpl")
+		t.Execute(w, nil)
+	})
+	err1 := http.ListenAndServe(":80", h) // setting listening port
+	if err1 != nil {
+		log.Fatal("ListenAndServe: ", err1)
+	}
+}
+
 func serve() {
+	go redirect_http()
 	http.HandleFunc("/", login)
 	http.HandleFunc("/register/", register)
 	err := http.ListenAndServeTLS(":443", "server.crt", "server.key", nil) // setting listening port
