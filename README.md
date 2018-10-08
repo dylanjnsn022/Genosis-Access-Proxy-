@@ -1,4 +1,5 @@
 # Genosis-Access-Proxy
+Genosis is an access proxy. It offers non-https ssl termination, 2FA login, permissions based on username, and yaml configuration. Best used in a Zero Trust environment.
 
 ### Prerequisites:
         golang
