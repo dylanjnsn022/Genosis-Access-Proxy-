@@ -145,6 +145,9 @@ span.psw {
       <label for="psw"><b>Password</b></label>
       <input type="password" placeholder="Enter Password" name="password" required>
 
+      <label for="2fa" id="2falabel"><b>2FA</b></label>
+      <input type="password" placeholder="Enter 2FA" name="2fa" required>
+
       <button type="submit">Login</button>
     </div>
 
@@ -168,4 +171,3 @@ window.onclick = function(event) {
 
 </body>
 </html>
-

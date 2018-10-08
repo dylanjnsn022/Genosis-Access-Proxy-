@@ -1,25 +1,32 @@
 package main
 
-import(
-"log"
-"net/http"
-"html/template"
-"fmt"
-"crypto/md5"
-"encoding/hex"
-"strings"
-"github.com/go-redis/redis"
-"crypto/tls"
-"flag"
-"github.com/go-yaml/yaml"
-vhost "github.com/inconshreveable/go-vhost"
-"io"
-"io/ioutil"
-"net"
-"os"
-"sync"
-"time"
-"os/exec"
+import (
+	"crypto/md5"
+	"crypto/tls"
+	"encoding/hex"
+	"flag"
+	"fmt"
+	"github.com/go-redis/redis"
+	"github.com/go-yaml/yaml"
+	vhost "github.com/inconshreveable/go-vhost"
+	"html/template"
+	"io"
+	"io/ioutil"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"time"
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base32"
+	"encoding/binary"
+	"strconv"
+	"github.com/thanhpk/randstr"
 )
 
 const (
@@ -66,44 +73,61 @@ type Server struct {
 	ready chan int
 }
 
-func finish_verify(name string, ip_addr string) string{
-       s := strings.Split(ip_addr, ":")
-       client := redis.NewClient(&redis.Options{
-                Addr:     "localhost:6379",
-                Password: "", // no password set
-                DB:       1,  // use default DB
-        })
+func finish_verify(name string, ip_addr string) string {
+
+	s := strings.Split(ip_addr, ":")
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       1,  // use default DB
+	})
 	val, err := client.Get(s[0]).Result()
 	if err != nil {
 		checksum := "0"
 		return checksum
-        }
-        client2 := redis.NewClient(&redis.Options{
-        Addr:     "localhost:6379",
-        Password: "", // no password set
-        DB:       2,  // use default DB
+	}
+	clientall := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       2,  // use default DB
+	})
+	all, err := clientall.Get("all").Result()
+	if err != nil {
+		fmt.Println("%%No all permission is set in the permissions file")
+	}
+	ss_all := strings.Split(all, ",")
+	for i := 0; i < len(ss_all); i++ {
+		if name == strings.Replace(ss_all[i], " ", "", -1) {
+			fmt.Println("----------------Permissions found for all:" + name)
+			checksum := "1"
+			return checksum
+		}
+	}
+	client2 := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       2,  // use default DB
 	})
 	val2, err := client2.Get(val).Result()
 	if err != nil {
-        	panic(err)
+		fmt.Println("%%ERROR User permissions are not defined")
 	}
 	ss := strings.Split(val2, ",")
 	for i := 0; i < len(ss); i++ {
-        if name == strings.Replace(ss[i], " ", "", -1){
-	err := client.Set(s[0], val, time.Minute).Err()
-        if err != nil {
-                fmt.Println("error with redis set")
-        }
-	fmt.Println("Permissions found for " + val + ":" + name)
-	checksum := "1"
-        return checksum
+		if name == strings.Replace(ss[i], " ", "", -1) {
+			err := client.Set(s[0], val, time.Minute).Err()
+			if err != nil {
+				fmt.Println("%%error with redis set")
+			}
+			fmt.Println("----------------Permissions found for " + val + ":" + name)
+			checksum := "1"
+			return checksum
+		}
 	}
-	} 
 
 	checksum := "0"
-        return checksum
+	return checksum
 }
-
 
 func (s *Server) Run() error {
 	// bind a port to handle TLS connections
@@ -187,11 +211,11 @@ func (s *Server) runFrontend(name string, front *Frontend, l net.Listener) {
 		}
 		verify := finish_verify(name, conn.RemoteAddr().String())
 		if verify == "1" {
-		s.Printf("Accepted new connection for %v from %v", name, conn.RemoteAddr())
-		// proxy the connection to an backend
-		go s.proxyConnection(conn, front)
+			s.Printf("Accepted new connection for %v from %v", name, conn.RemoteAddr())
+			// proxy the connection to an backend
+			go s.proxyConnection(conn, front)
 		} else {
-			fmt.Println("no permissions")
+			fmt.Println("----------------No permissions")
 		}
 	}
 }
@@ -344,123 +368,222 @@ func loadTLSConfig(crtPath, keyPath string) (*tls.Config, error) {
 }
 
 func GetMD5Hash(text string) string {
-    hasher := md5.New()
-    hasher.Write([]byte(text))
-    return hex.EncodeToString(hasher.Sum(nil))
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
-    if r.Method == "GET" {
-        t, _ := template.ParseFiles("login.gtpl")
-        t.Execute(w, nil)
-    } else {
-        r.ParseForm()
-        // logic part of log in
-        uname := strings.Join(r.Form["username"]," ")
-	pswd := strings.Join(r.Form["password"]," ")
-	client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-	val, err := client.Get(uname).Result()
-	if err != nil {
-        	t, _ := template.ParseFiles("denied.gtpl")
-        	t.Execute(w, nil)
+	if r.Method == "GET" {
+		t, _ := template.ParseFiles("login.gtpl")
+		t.Execute(w, nil)
 	} else {
-	if val == GetMD5Hash(pswd) {
-	client1 := redis.NewClient(&redis.Options{
-                Addr:     "localhost:6379",
-                Password: "", // no password set
-                DB:       1,  // use default DB
-        })
-	ip_addr := string(r.RemoteAddr)
-	s := strings.Split(ip_addr, ":")
-	err := client1.Set(s[0], uname, time.Minute).Err()
-	if err != nil {
-		fmt.Println("error with redis set")
+		r.ParseForm()
+		// logic part of log in
+		uname := strings.Join(r.Form["username"], " ")
+		pswd := strings.Join(r.Form["password"], " ")
+		twofa := strings.Join(r.Form["2fa"], " ")
+		client := redis.NewClient(&redis.Options{
+			Addr:     "localhost:6379",
+			Password: "", // no password set
+			DB:       0,  // use default DB
+		})
+		val, err := client.Get(uname).Result()
+		if err != nil {
+			t, _ := template.ParseFiles("denied.gtpl")
+			t.Execute(w, nil)
+		} else {
+			if val == GetMD5Hash(pswd) {
+				if twofa == get2fa(uname) {
+				client1 := redis.NewClient(&redis.Options{
+					Addr:     "localhost:6379",
+					Password: "", // no password set
+					DB:       1,  // use default DB
+				})
+				fmt.Println("----------------Login event: " + uname)
+				ip_addr := string(r.RemoteAddr)
+				s := strings.Split(ip_addr, ":")
+				err := client1.Set(s[0], uname, time.Minute).Err()
+				if err != nil {
+					fmt.Println("%%error with redis set - Login")
+				}
+				t, _ := template.ParseFiles("redirect.gtpl")
+				t.Execute(w, nil)
+			  } else {
+					fmt.Println("----------------Login FAILED(2FA): " + uname)
+					t, _ := template.ParseFiles("denied.gtpl")
+					t.Execute(w, nil)
+				}
+			} else {
+				fmt.Println("----------------Login FAILED: " + uname)
+				t, _ := template.ParseFiles("denied.gtpl")
+				t.Execute(w, nil)
+			}
+		}
 	}
-        t, _ := template.ParseFiles("redirect.gtpl")
-        t.Execute(w, nil)
-	} else {
-        t, _ := template.ParseFiles("denied.gtpl")
-        t.Execute(w, nil)
-	}
-	}
-    }
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	uname := strings.Join(r.Form["uname"]," ")
-        pswd := GetMD5Hash(strings.Join(r.Form["psswd"]," "))
-        client := redis.NewClient(&redis.Options{
-                Addr:     "localhost:6379",
-                Password: "", // no password set
-                DB:       0,  // use default DB
-        })
-	err := client.Set(uname, pswd, 0).Err()
-	if err != nil {
-		panic(err)
+	uname := strings.Join(r.Form["uname"], " ")
+	pswd := GetMD5Hash(strings.Join(r.Form["psswd"], " "))
+	pswd1 := GetMD5Hash(strings.Join(r.Form["psswd1"], " "))
+	if pswd == pswd1 {
+		client := redis.NewClient(&redis.Options{
+			Addr:     "localhost:6379",
+			Password: "", // no password set
+			DB:       0,  // use default DB
+		})
+		fmt.Println("----------------User Registered: " + uname)
+		err := client.Set(uname, pswd, 0).Err()
+		if err != nil {
+			fmt.Println("Error Registering" + uname)
+		}
+		set2fa(uname)
+		t, _ := template.ParseFiles("redirect_home.gtpl")
+		t.Execute(w, nil)
+	} else {
+		fmt.Println("----------------User Registration FAILED(Passwords did not match): " + uname)
+		t, _ := template.ParseFiles("register_fail.gtpl")
+		t.Execute(w, nil)
 	}
-	t, _ := template.ParseFiles("redirect_home.gtpl")
-        t.Execute(w, nil)
 }
 
-func serve(){
-  http.HandleFunc("/", login)
-  http.HandleFunc("/register/", register)
-  err := http.ListenAndServeTLS(":443", "server.crt", "server.key", nil) // setting listening port
-  if err != nil {
-      log.Fatal("ListenAndServe: ", err)
-  }
+func serve() {
+	http.HandleFunc("/", login)
+	http.HandleFunc("/register/", register)
+	err := http.ListenAndServeTLS(":443", "server.crt", "server.key", nil) // setting listening port
+	if err != nil {
+		log.Fatal("ListenAndServe: ", err)
+	}
 }
 
-func ap_proxy_run(){
+func ap_proxy_run() {
 	opts, err := parseArgs()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	// read configuration file
+
 	configBuf, err := ioutil.ReadFile(opts.configPath)
 	if err != nil {
 		fmt.Printf("Failed to read configuration file %s: %v\n", opts.configPath, err)
 		os.Exit(1)
 	}
 
-	// parse configuration file
+
 	config, err := parseConfig(configBuf, loadTLSConfig)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	// run server
+
 	s := &Server{
 		Configuration: config,
-		Logger:        log.New(os.Stdout, "slt ", log.LstdFlags|log.Lshortfile),
+		Logger:        log.New(os.Stdout, "+ ", log.LstdFlags|log.Lshortfile),
 	}
 
-	// this blocks unless there's a startup error
 	err = s.Run()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start slt: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to start genosis: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func builder(){
+func builder() {
 	cmd := "./bpm"
 	if err := exec.Command(cmd).Run(); err != nil {
-		fmt.Println("Error Building Permissions")
+		fmt.Println("%%Error Building Permissions")
 	}
 }
 
-func main(){
-builder()
-go ap_proxy_run()
-serve()
+func check(e error) {
+	if e != nil {
+		fmt.Println("%%Error")
+	}
 }
 
+
+func prefix0(otp string) string {
+	if len(otp) == 6 {
+		return otp
+	}
+	for i := (6 - len(otp)); i > 0; i-- {
+		otp = "0" + otp
+	}
+	return otp
+}
+
+func getHOTPToken(secret string, interval int64) string {
+
+
+	key, err := base32.StdEncoding.DecodeString(strings.ToUpper(secret))
+	check(err)
+	bs := make([]byte, 8)
+	binary.BigEndian.PutUint64(bs, uint64(interval))
+
+
+	hash := hmac.New(sha1.New, key)
+	hash.Write(bs)
+	h := hash.Sum(nil)
+
+
+	o := (h[19] & 15)
+
+	var header uint32
+
+	r := bytes.NewReader(h[o : o+4])
+	err = binary.Read(r, binary.BigEndian, &header)
+
+	check(err)
+
+	h12 := (int(header) & 0x7fffffff) % 1000000
+
+
+	otp := strconv.Itoa(int(h12))
+
+	return prefix0(otp)
+}
+
+func getTOTPToken(secret string) string {
+	interval := time.Now().Unix() / 30
+	return getHOTPToken(secret, interval)
+}
+
+func get2fa(email string) string{
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       3,  // use default DB
+	})
+data, err := client.Get(email).Result()
+if err != nil {
+fmt.Println("%%ERROR getting 2fa for " + email)
+}
+	return getTOTPToken(data)
+}
+
+func set2fa(name string) {
+token := randstr.String(16)
+data := []byte(token)
+str := base32.StdEncoding.EncodeToString(data)
+s := str[0:16]
+client := redis.NewClient(&redis.Options{
+	Addr:     "localhost:6379",
+	Password: "", // no password set
+	DB:       3,  // use default DB
+})
+err := client.Set(name, s, 0).Err()
+if err != nil {
+	panic(err)
+}
+fmt.Println(name + ": " + s)
+}
+
+func main() {
+	builder()
+	go ap_proxy_run()
+	serve()
+}

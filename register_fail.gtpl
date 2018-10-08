@@ -37,12 +37,6 @@ button:hover {
     background-color: #f44336;
 }
 
-.regbtn {
-    width: auto;
-    padding: 10px 18px;
-    background-color: #0078ff;
-}
-
 /* Center the image and position the close button */
 .imgcontainer {
     text-align: center;
@@ -138,54 +132,28 @@ span.psw {
 -->
 <div id="id01" class="modal">
 
-  <form class="modal-content animate" action="/" method="post">
-    <div class="imgcontainer">
-    </div>
+    <form class="modal-content animate" action="/register/" method="post">
+      <div class="imgcontainer">
+      </div>
 
-    <div class="container">
-      <label for="uname"><b>Username</b></label>
-      <input type="text" placeholder="Enter Username" name="username" required>
+      <div class="container">
+        <h3 style="color:red;">Passwords did not match</h3>
+        <label for="uname"><b>Username</b></label>
+        <input type="text" placeholder="Enter Username" name="uname" required>
 
-      <label for="psw"><b>Password</b></label>
-      <input type="password" placeholder="Enter Password" name="password" required>
+        <label for="psw"><b>Password</b></label>
+        <input type="password" placeholder="Enter Password" name="psswd" required>
 
-      <label for="2fa" id="2falabel"><b>2FA</b></label>
-      <input type="password" placeholder="Enter 2FA" name="2fa" required>
+        <label for="psw"><b>Confirm Password</b></label>
+        <input type="password" placeholder="Enter Password" name="psswd1" required>
 
-      <button id="submit" type="submit">Login</button>
-    </div>
+        <button type="submit">Submit</button>
+      </div>
 
-
-    <div class="container" style="background-color:#f1f1f1">
-      <button type="button" onclick="document.getElementById('id01').style.display='none'" class="cancelbtn">Cancel</button>
-      <button type="button" onclick="document.getElementById('id02').style.display='block';document.getElementById('id01').style.display='none';" class="regbtn">Register</button>
-    </div>
-  </form>
-</div>
-
-<div id="id02" class="modal">
-
-  <form class="modal-content animate" action="/register/" method="post">
-    <div class="imgcontainer">
-    </div>
-
-    <div class="container">
-      <label for="uname"><b>Username</b></label>
-      <input type="text" placeholder="Enter Username" name="uname" required>
-
-      <label for="psw"><b>Password</b></label>
-      <input type="password" placeholder="Enter Password" name="psswd" required>
-
-      <label for="psw"><b>Confirm Password</b></label>
-      <input type="password" placeholder="Enter Password" name="psswd1" required>
-
-      <button type="submit">Submit</button>
-    </div>
-
-    <div class="container" style="background-color:#f1f1f1">
-    </div>
-  </form>
-</div>
+      <div class="container" style="background-color:#f1f1f1">
+      </div>
+    </form>
+  </div>
 
 <script>
 // Get the modal
