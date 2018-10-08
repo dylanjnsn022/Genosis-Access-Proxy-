@@ -1,0 +1,14 @@
+bind_addr: ":4443"
+
+frontends:
+  servername:
+    tls_key: server.key
+    tls_crt: server.crt
+    backends:
+      -
+        addr: "10.10.1.3:80"
+
+  servername1:
+    backends:
+      -
+        addr: "10.10.1.2:443"
