@@ -7,10 +7,12 @@
 ### Build:
         go build genosis.go
         go build bpm.go
+        go build 2fa.go
 
 ### Usage:
     ./genosis <config file path>
     ./bpm
+    ./2fa set <email>
     
 ### File Structure:
         permissions-
