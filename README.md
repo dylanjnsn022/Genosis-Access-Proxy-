@@ -1,5 +1,9 @@
 # Genosis-Access-Proxy
 
+### Prerequisites:
+        golang
+        redis-server
+
 ### Build:
         go build genosis.go
         go build bpm.go
