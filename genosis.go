@@ -441,8 +441,8 @@ func register(w http.ResponseWriter, r *http.Request) {
 		t.Execute(w, nil)
 	} else {
 		fmt.Println("----------------User Registration FAILED(Passwords did not match): " + uname)
-		t, _ := template.ParseFiles("register_fail.gtpl")
-		t.Execute(w, nil)
+		denied := "https://" + r.Host + "/reg_denied.html"
+		http.Redirect(w, r, denied, http.StatusSeeOther)
 	}
 }
 
