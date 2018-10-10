@@ -374,10 +374,6 @@ func GetMD5Hash(text string) string {
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		t, _ := template.ParseFiles("login.gtpl")
-		t.Execute(w, nil)
-	} else {
 		r.ParseForm()
 		// logic part of log in
 		uname := strings.Join(r.Form["username"], " ")
@@ -390,8 +386,9 @@ func login(w http.ResponseWriter, r *http.Request) {
 		})
 		val, err := client.Get(uname).Result()
 		if err != nil {
-			t, _ := template.ParseFiles("denied.gtpl")
-			t.Execute(w, nil)
+			fmt.Println("----------------Login FAILED(Username): " + uname)
+			denied := "https://" + r.Host + "/denied.html"
+			http.Redirect(w, r, denied, http.StatusSeeOther)
 		} else {
 			if val == GetMD5Hash(pswd) {
 				if twofa == get2fa(uname) {
@@ -411,16 +408,16 @@ func login(w http.ResponseWriter, r *http.Request) {
 				t.Execute(w, nil)
 			  } else {
 					fmt.Println("----------------Login FAILED(2FA): " + uname)
-					t, _ := template.ParseFiles("denied.gtpl")
-					t.Execute(w, nil)
+					denied := "https://" + r.Host + "/denied.html"
+					http.Redirect(w, r, denied, http.StatusSeeOther)
 				}
 			} else {
-				fmt.Println("----------------Login FAILED: " + uname)
-				t, _ := template.ParseFiles("denied.gtpl")
-				t.Execute(w, nil)
+				fmt.Println("----------------Login FAILED(Password): " + uname)
+				denied := "https://" + r.Host + "/denied.html"
+				http.Redirect(w, r, denied, http.StatusSeeOther)
 			}
 		}
-	}
+
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
@@ -449,20 +446,21 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func redirect_http(){
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t, _ := template.ParseFiles("http_redirect.gtpl")
-		t.Execute(w, nil)
-	})
-	err1 := http.ListenAndServe(":80", h) // setting listening port
-	if err1 != nil {
-		log.Fatal("ListenAndServe: ", err1)
+func redirect_http(w http.ResponseWriter, req *http.Request){
+	target := "https://" + req.Host + req.URL.Path
+	if len(req.URL.RawQuery) > 0 {
+			target += "?" + req.URL.RawQuery
 	}
+	log.Printf("redirect to: %s", target)
+	http.Redirect(w, req, target,
+					http.StatusTemporaryRedirect)
 }
 
 func serve() {
-	go redirect_http()
-	http.HandleFunc("/", login)
+	go http.ListenAndServe(":80", http.HandlerFunc(redirect_http))
+	fs := http.FileServer(http.Dir("static"))
+	http.Handle("/", fs)
+	http.HandleFunc("/login/", login)
 	http.HandleFunc("/register/", register)
 	err := http.ListenAndServeTLS(":443", "server.crt", "server.key", nil) // setting listening port
 	if err != nil {
