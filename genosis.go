@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
 	"flag"
@@ -367,10 +367,55 @@ func loadTLSConfig(crtPath, keyPath string) (*tls.Config, error) {
 	}, nil
 }
 
-func GetMD5Hash(text string) string {
-	hasher := md5.New()
+func GetHash(text string) string {
+	hasher := sha256.New()
 	hasher.Write([]byte(text))
 	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func redis_set(db_numb int, key string, value string, state_time int) string{
+	if state_time == 1 {
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       db_numb,  // use default DB
+	})
+	err := client.Set(key, value, time.Minute).Err()
+	if err != nil {
+		fmt.Println("Error Redis settting: " + key + " " + value)
+		return "error"
+	}
+	return "no_error"
+} else if state_time == 0 {
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       db_numb,  // use default DB
+	})
+	err := client.Set(key, value, 0).Err()
+	if err != nil {
+		fmt.Println("Error Redis setting:" + key + " " + value)
+		return "error"
+	}
+	return "no_error"
+} else {
+	return "error"
+}
+}
+
+func redis_get(db_numb int, key string) string {
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       db_numb,  // use default DB
+	})
+	val, err := client.Get(key).Result()
+	if err != nil {
+			return "error"
+	} else {
+		return val
+	}
+
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
@@ -379,29 +424,18 @@ func login(w http.ResponseWriter, r *http.Request) {
 		uname := strings.Join(r.Form["username"], " ")
 		pswd := strings.Join(r.Form["password"], " ")
 		twofa := strings.Join(r.Form["2fa"], " ")
-		client := redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
-			Password: "", // no password set
-			DB:       0,  // use default DB
-		})
-		val, err := client.Get(uname).Result()
-		if err != nil {
+
+		if redis_get(0, uname) == "error" {
 			fmt.Println("----------------Login FAILED(Username): " + uname)
 			denied := "https://" + r.Host + "/denied.html"
 			http.Redirect(w, r, denied, http.StatusSeeOther)
 		} else {
-			if val == GetMD5Hash(pswd) {
+			if redis_get(0, uname) == GetHash(pswd) {
 				if twofa == get2fa(uname) {
-				client1 := redis.NewClient(&redis.Options{
-					Addr:     "localhost:6379",
-					Password: "", // no password set
-					DB:       1,  // use default DB
-				})
 				fmt.Println("----------------Login event: " + uname)
 				ip_addr := string(r.RemoteAddr)
 				s := strings.Split(ip_addr, ":")
-				err := client1.Set(s[0], uname, time.Minute).Err()
-				if err != nil {
+				if redis_set(1, s[0], uname, 1) == "error" {
 					fmt.Println("%%error with redis set - Login")
 				}
 				t, _ := template.ParseFiles("redirect.gtpl")
@@ -423,17 +457,11 @@ func login(w http.ResponseWriter, r *http.Request) {
 func register(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	uname := strings.Join(r.Form["uname"], " ")
-	pswd := GetMD5Hash(strings.Join(r.Form["psswd"], " "))
-	pswd1 := GetMD5Hash(strings.Join(r.Form["psswd1"], " "))
+	pswd := GetHash(strings.Join(r.Form["psswd"], " "))
+	pswd1 := GetHash(strings.Join(r.Form["psswd1"], " "))
 	if pswd == pswd1 {
-		client := redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
-			Password: "", // no password set
-			DB:       0,  // use default DB
-		})
 		fmt.Println("----------------User Registered: " + uname)
-		err := client.Set(uname, pswd, 0).Err()
-		if err != nil {
+		if redis_set(0, uname, pswd, 0) == "error" {
 			fmt.Println("Error Registering" + uname)
 		}
 		set2fa(uname)
@@ -563,13 +591,8 @@ func getTOTPToken(secret string) string {
 }
 
 func get2fa(email string) string{
-	client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "", // no password set
-		DB:       3,  // use default DB
-	})
-data, err := client.Get(email).Result()
-if err != nil {
+data := redis_get(3, email)
+if data == "error" {
 fmt.Println("%%ERROR getting 2fa for " + email)
 }
 	return getTOTPToken(data)
@@ -580,14 +603,8 @@ token := randstr.String(16)
 data := []byte(token)
 str := base32.StdEncoding.EncodeToString(data)
 s := str[0:16]
-client := redis.NewClient(&redis.Options{
-	Addr:     "localhost:6379",
-	Password: "", // no password set
-	DB:       3,  // use default DB
-})
-err := client.Set(name, s, 0).Err()
-if err != nil {
-	panic(err)
+if redis_set(3, name, s, 0) == "error" {
+	fmt.Println("%%Error setting 2fa")
 }
 fmt.Println(name + ": " + s)
 }
